@@ -13,6 +13,7 @@ from pathlib import Path
 from loguru import logger
 
 from detection.detector import PlayerDetector, TeamColorClassifier
+from detection.jersey_ocr import JerseyOCR
 from tracking.tracker import PlayerTracker
 from metrics.pitch_control import compute_pitch_control
 from metrics.physical import compute_physical_metrics
@@ -55,6 +56,19 @@ def run(
     # --- Stage 2: Tracking ---
     tracker = PlayerTracker()
     all_tracked_frames = tracker.process_detections(all_frame_detections)
+
+    # --- Stage 2b: Jersey OCR ---
+    # For each confirmed track, run OCR on the best crop stored by the tracker.
+    logger.info("Running jersey OCR...")
+    ocr = JerseyOCR()
+    jersey_numbers: dict[int, int] = {}
+    for tid, track in all_confirmed.items():
+        if track.best_crop is not None:
+            number, conf = ocr.extract(track.best_crop)
+            if number is not None:
+                jersey_numbers[tid] = number
+                logger.debug(f"Track {tid}: jersey #{number} (conf={conf:.2f})")
+    logger.info(f"Jersey OCR complete — {len(jersey_numbers)} numbers detected")
 
     # --- Stage 3: Pitch control (sample every 5th frame for speed) ---
     logger.info("Computing pitch control...")
@@ -138,6 +152,7 @@ def run(
         pitch_control_by_track=pitch_control_by_track,
         press_stats=player_press_stats,
         track_teams=track_teams,
+        jersey_numbers=jersey_numbers,
     )
 
     with get_session() as session:

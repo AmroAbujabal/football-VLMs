@@ -27,6 +27,10 @@ class Track:
     pitch_history: list[np.ndarray] = field(default_factory=list)
     frame_history: list[int] = field(default_factory=list)
 
+    # Best player crop seen so far (updated when a larger bbox is matched).
+    # Used by jersey OCR after tracking completes.
+    best_crop: Optional[np.ndarray] = None
+
     # State
     frames_since_seen: int = 0
     age: int = 0                 # total frames this track has been active

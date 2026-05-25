@@ -52,6 +52,7 @@ class PipelineResult:
         pitch_control_by_track: track_id → mean pitch control contribution [0, 1]
         press_stats:            track_id → PressStatsLike (may be partial)
         track_teams:            track_id → "home" | "away" | None
+        jersey_numbers:         track_id → jersey number from OCR (may be partial)
     """
     match_id: uuid.UUID
     fps: float
@@ -59,6 +60,7 @@ class PipelineResult:
     pitch_control_by_track: dict[int, float]
     press_stats: dict[int, PressStatsLike]
     track_teams: dict[int, Optional[str]]
+    jersey_numbers: dict[int, int] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -91,7 +93,8 @@ def save_pipeline_results(
     rows_created = 0
 
     for track_id, physical in result.physical_metrics.items():
-        player = _get_or_create_player(session, academy_id, track_id)
+        ocr_jersey = result.jersey_numbers.get(track_id)
+        player = _get_or_create_player(session, academy_id, track_id, ocr_jersey)
         press  = result.press_stats.get(track_id)
         pc     = result.pitch_control_by_track.get(track_id)
         team   = result.track_teams.get(track_id)
@@ -133,29 +136,32 @@ def _get_or_create_player(
     session: Session,
     academy_id: uuid.UUID,
     track_id: int,
+    ocr_jersey: Optional[int] = None,
 ) -> Player:
     """
     Return an existing Player for this track, or create an anonymous one.
 
-    Anonymous players use track_id as jersey_number and position="unknown"
-    until a human or OCR step links them to a real profile.
+    Uses ocr_jersey when OCR provides a confident number; falls back to
+    track_id so the record is still identifiable without OCR.
     """
     existing = session.execute(
         select(Player).where(
             Player.academy_id == academy_id,
-            Player.jersey_number == track_id,
             Player.name == f"Track {track_id}",
         )
     ).scalar_one_or_none()
 
+    jersey = ocr_jersey if ocr_jersey is not None else track_id
+
     if existing:
+        existing.jersey_number = jersey
         return existing
 
     player = Player(
         academy_id=academy_id,
         name=f"Track {track_id}",
         position="unknown",
-        jersey_number=track_id,
+        jersey_number=jersey,
     )
     session.add(player)
     session.flush()

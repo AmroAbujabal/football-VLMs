@@ -42,8 +42,8 @@ export interface MatchPlayer {
 
 export interface PlayerStats {
   match_id: string;
-  home_team: string;
-  away_team: string;
+  home_team: string | null;
+  away_team: string | null;
   team: string;
   distance_covered_m: number | null;
   top_speed_ms: number | null;
@@ -53,4 +53,28 @@ export interface PlayerStats {
   press_count: number | null;
   press_success_rate: number | null;
   pitch_control_contribution: number | null;
+}
+
+export interface DevelopmentScore {
+  week_start: string;
+  overall_score: number;
+  physical_score: number | null;
+  tactical_score: number | null;
+  technical_score: number | null;
+}
+
+export interface PlayerProfile {
+  player_id: string;
+  name: string;
+  position: string;
+  jersey_number: number | null;
+  academy_id: string;
+  latest_stats: PlayerStats | null;
+  development_trend: DevelopmentScore[];
+}
+
+export interface PlayerHeatmap {
+  player_id: string;
+  match_id: string;
+  heatmap_data: Record<string, unknown> | null;
 }
