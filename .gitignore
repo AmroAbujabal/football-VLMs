@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Data — large files, never commit
+data/
+*.mp4
+*.avi
+*.mkv
+*.mov
+*.pt
+*.pth
+*.onnx
+
+# Database
+dev.db
+*.db
+*.sqlite3
+alembic_gen_tmp.db
+
+# Environment
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node (dashboard)
+dashboard/node_modules/
+dashboard/.next/
+dashboard/out/
+
+# Test artifacts
+.coverage
+htmlcov/
+.pytest_cache/

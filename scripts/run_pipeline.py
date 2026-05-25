@@ -1,0 +1,158 @@
+"""
+scripts/run_pipeline.py
+
+End-to-end pipeline: video in → player profiles out.
+
+Usage:
+    python scripts/run_pipeline.py --video data/raw/match.mp4 --max-frames 500
+"""
+
+import argparse
+import uuid
+from pathlib import Path
+from loguru import logger
+
+from detection.detector import PlayerDetector, TeamColorClassifier
+from tracking.tracker import PlayerTracker
+from metrics.pitch_control import compute_pitch_control
+from metrics.physical import compute_physical_metrics
+from metrics.pressing import PressAnalyser
+from utils.homography import PitchHomography
+from database.repository import PipelineResult, save_pipeline_results
+from database.session import get_session
+
+
+def run(
+    video_path: Path,
+    match_id: uuid.UUID,
+    academy_id: uuid.UUID,
+    max_frames: int | None = None,
+) -> None:
+    logger.info(f"Starting pipeline for: {video_path}")
+
+    # --- Stage 1: Detection ---
+    team_classifier = TeamColorClassifier(n_clusters=3)
+    detector = PlayerDetector(use_sam=True, team_classifier=team_classifier)
+
+    all_frame_detections = detector.process_video(
+        video_path, max_frames=max_frames
+    )
+
+    # Fit team color classifier on first 100 detected crops
+    early_crops = []
+    for fd in all_frame_detections[:100]:
+        for det in fd.detections:
+            if det.crop is not None:
+                early_crops.append(det.crop)
+    if early_crops:
+        team_classifier.fit(early_crops)
+        # TODO: manually assign cluster labels after visual inspection
+        # team_classifier.assign_team_labels({0: "home", 1: "away", 2: "referee"})
+        logger.info(
+            "Team classifier fitted — assign cluster labels manually before metric computation"
+        )
+
+    # --- Stage 2: Tracking ---
+    tracker = PlayerTracker()
+    all_tracked_frames = tracker.process_detections(all_frame_detections)
+
+    # --- Stage 3: Pitch control (sample every 5th frame for speed) ---
+    logger.info("Computing pitch control...")
+    pitch_control_results = []
+    for tf in all_tracked_frames[::5]:
+        home_tracks = [t for t in tf.confirmed_tracks if t.team == "home"]
+        away_tracks = [t for t in tf.confirmed_tracks if t.team == "away"]
+        pc = compute_pitch_control(tf.frame_id, home_tracks, away_tracks)
+        pitch_control_results.append(pc)
+
+    avg_home_control = sum(p.home_control_pct for p in pitch_control_results)
+    if pitch_control_results:
+        avg_home_control /= len(pitch_control_results)
+    logger.info(f"Avg home pitch control: {avg_home_control:.1%}")
+
+    # --- Stage 4: Pressing analysis ---
+    logger.info("Detecting press events...")
+    press_analyser = PressAnalyser()
+    press_analyser.detect_press_events(all_tracked_frames)
+    player_press_stats = press_analyser.aggregate_player_stats()
+
+    logger.info(f"Press stats computed for {len(player_press_stats)} players")
+
+    # --- Stage 5: Physical metrics ---
+    logger.info("Computing physical metrics...")
+    homography = PitchHomography()
+    # fit() will fail without a real broadcast frame; use fit_from_points in
+    # production once manual pitch corner annotations are provided.
+    # For now, compute pitch positions from bbox centres using the naive
+    # linear fallback (homography.pixel_to_pitch via settings dimensions).
+
+    all_confirmed = {}
+    for tf in all_tracked_frames:
+        for track in tf.confirmed_tracks:
+            if track.track_id not in all_confirmed:
+                all_confirmed[track.track_id] = track
+
+    physical_metrics = {}
+    pitch_control_by_track = {}
+
+    # Aggregate pitch control contribution per track across sampled frames
+    for pc_frame in pitch_control_results:
+        for tid, contrib in pc_frame.player_contributions.items():
+            if tid not in pitch_control_by_track:
+                pitch_control_by_track[tid] = []
+            pitch_control_by_track[tid].append(contrib)
+    pitch_control_by_track = {
+        tid: sum(vals) / len(vals)
+        for tid, vals in pitch_control_by_track.items()
+    }
+
+    import numpy as np
+    from config.settings import settings as cfg
+
+    for tid, track in all_confirmed.items():
+        if len(track.bbox_history) < 2:
+            continue
+        # Convert bbox centres to approximate pitch positions (linear fallback)
+        centers = np.array([
+            [(b[0] + b[2]) / 2, (b[1] + b[3]) / 2]
+            for b in track.bbox_history
+        ], dtype=np.float64)
+        pitch_pos = np.column_stack([
+            centers[:, 0] / cfg.frame_width  * cfg.pitch_length,
+            centers[:, 1] / cfg.frame_height * cfg.pitch_width,
+        ])
+        physical_metrics[tid] = compute_physical_metrics(
+            track_id=tid,
+            pitch_positions=pitch_pos,
+            fps=cfg.default_fps,
+        )
+
+    # --- Stage 6: Persist to database ---
+    logger.info("Persisting results to database...")
+    track_teams = {tid: t.team for tid, t in all_confirmed.items()}
+
+    result = PipelineResult(
+        match_id=match_id,
+        fps=cfg.default_fps,
+        physical_metrics=physical_metrics,
+        pitch_control_by_track=pitch_control_by_track,
+        press_stats=player_press_stats,
+        track_teams=track_teams,
+    )
+
+    with get_session() as session:
+        n = save_pipeline_results(session, academy_id, result)
+        session.commit()
+
+    logger.info(f"Pipeline complete — {n} player profiles saved to database.")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Football AI pipeline")
+    parser.add_argument("--video",      required=True,  type=Path)
+    parser.add_argument("--match-id",   required=True,  type=uuid.UUID)
+    parser.add_argument("--academy-id", required=True,  type=uuid.UUID)
+    parser.add_argument("--max-frames", type=int, default=None)
+    args = parser.parse_args()
+
+    run(args.video, args.match_id, args.academy_id, args.max_frames)

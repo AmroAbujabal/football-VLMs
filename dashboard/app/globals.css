@@ -1,0 +1,115 @@
+@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Design tokens ─────────────────────────────────────────── */
+:root {
+  --color-primary:     #1E40AF;
+  --color-secondary:   #3B82F6;
+  --color-accent:      #D97706;
+  --color-background:  #F8FAFC;
+  --color-surface:     #FFFFFF;
+  --color-border:      #E2E8F0;
+  --color-muted:       #64748B;
+  --color-home:        #2563EB;
+  --color-away:        #D97706;
+
+  --grid-gap:          8px;
+  --card-padding:      16px;
+  --card-radius:       10px;
+  --header-height:     56px;
+
+  --duration-fast:     150ms;
+  --duration-base:     200ms;
+  --ease-out:          cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ── Base ──────────────────────────────────────────────────── */
+@layer base {
+  html { @apply scroll-smooth; }
+
+  body {
+    background-color: var(--color-background);
+    color: #0F172A;
+    font-family: "Fira Sans", ui-sans-serif, system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* All numeric data rendered in Fira Code */
+  .tabular-nums { font-family: "Fira Code", ui-monospace, monospace; }
+
+  /* Skip link for keyboard accessibility */
+  .skip-link {
+    @apply sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50
+           focus:rounded-md focus:bg-primary-800 focus:px-3 focus:py-2 focus:text-white;
+  }
+}
+
+/* ── Components ────────────────────────────────────────────── */
+@layer components {
+
+  /* Card */
+  .card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--card-radius);
+    padding: var(--card-padding);
+    box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.05), 0 1px 2px -1px rgb(0 0 0 / 0.04);
+    transition: box-shadow var(--duration-base) var(--ease-out),
+                border-color var(--duration-base) var(--ease-out);
+  }
+  .card-hover:hover {
+    box-shadow: 0 4px 16px 0 rgb(30 64 175 / 0.10), 0 1px 3px 0 rgb(0 0 0 / 0.05);
+    border-color: #BFDBFE;
+  }
+
+  /* KPI label / value */
+  .kpi-label {
+    @apply text-2xs font-semibold uppercase tracking-widest text-slate-400;
+  }
+  .kpi-value {
+    @apply text-2xl font-bold tabular-nums leading-none;
+    font-family: "Fira Code", ui-monospace, monospace;
+  }
+
+  /* Status dots */
+  .dot-done       { @apply h-2 w-2 rounded-full bg-emerald-500; }
+  .dot-processing { @apply h-2 w-2 rounded-full bg-amber-400; }
+  .dot-pending    { @apply h-2 w-2 rounded-full bg-slate-300; }
+  .dot-failed     { @apply h-2 w-2 rounded-full bg-red-500; }
+
+  /* Status badges */
+  .badge {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-2xs font-semibold uppercase tracking-wide;
+  }
+  .badge-done       { @apply badge bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200; }
+  .badge-processing { @apply badge bg-amber-50  text-amber-700  ring-1 ring-amber-200;  }
+  .badge-pending    { @apply badge bg-slate-100 text-slate-500  ring-1 ring-slate-200;  }
+  .badge-failed     { @apply badge bg-red-50    text-red-700    ring-1 ring-red-200;    }
+
+  /* Team pill */
+  .team-pill-home { @apply inline-flex items-center rounded-md px-2 py-0.5 text-2xs font-semibold bg-blue-50 text-blue-700 ring-1 ring-blue-200; }
+  .team-pill-away { @apply inline-flex items-center rounded-md px-2 py-0.5 text-2xs font-semibold bg-amber-50 text-amber-700 ring-1 ring-amber-200; }
+
+  /* Section heading */
+  .section-title {
+    @apply text-sm font-semibold text-slate-700 uppercase tracking-wider;
+  }
+
+  /* Table */
+  .data-table { @apply min-w-full divide-y divide-slate-100 text-sm; }
+  .data-table thead { @apply bg-slate-50; }
+  .data-table th {
+    @apply px-3 py-2.5 text-left text-2xs font-semibold uppercase tracking-widest text-slate-400
+           cursor-pointer select-none whitespace-nowrap hover:text-slate-700
+           transition-colors duration-150;
+  }
+  .data-table td { @apply px-3 py-2.5 text-slate-700; }
+  .data-table tbody tr { @apply border-b border-slate-50 hover:bg-slate-50 transition-colors duration-100; }
+  .data-table tbody tr:last-child { @apply border-b-0; }
+}
