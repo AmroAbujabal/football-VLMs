@@ -44,13 +44,31 @@ Bilingual product: Arabic + English UI.
 - GPU: configure in config/settings.py (CUDA device index)
 - Model weights stored in /data/model_weights/ (not committed to git)
 
-## Priority Order (Current Sprint)
-1. Detection pipeline — YOLO + SAM 2 on sample clip
-2. Jersey OCR + team color classification
-3. Re-ID across occlusions
-4. Metric computation layer (start with pitch control + press timing)
-5. Database schema + API
-6. Dashboard
+## Completed
+- Detection pipeline (YOLO + SAM 2)
+- Jersey OCR + team color classification
+- Physical metrics (distance, speed, sprints, hi-intensity runs)
+- Pitch control (Voronoi-based)
+- Pressing analysis (press count, success rate, trigger accuracy)
+- DevelopmentScore auto-computed per player per week after each match
+- Database schema + Alembic migrations
+- FastAPI REST API with JWT auth
+- Video upload endpoint → Celery async pipeline
+- Next.js dashboard (match list, match detail, player profile)
+
+## Current Priority
+Player performance prediction model:
+1. Add position + date_of_birth to Player model (Alembic migration)
+2. Feature assembly script (rolling match history → training rows)
+3. Train scikit-learn model per position group
+4. GET /api/v1/players/{id}/prediction endpoint
+5. Dashboard prediction widget
+
+## Backlog
+- Heatmap grid written by pipeline (endpoint exists, data not yet computed)
+- Re-ID across occlusions (TransReID/OSNet — needs torch)
+- PostgreSQL + pgvector for production
+- Arabic UI (name_ar fields in schema already)
 
 ## Do Not
 - Commit model weights or raw footage to git

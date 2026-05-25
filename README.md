@@ -18,7 +18,7 @@ Ingests broadcast video of a match, detects and tracks every player frame-by-fra
 | Re-ID | OSNet / TransReID (HOG stub, upgrade pending) |
 | OCR | PaddleOCR — jersey number extraction |
 | Tracking | SORT (Kalman + Hungarian) |
-| Metrics | Custom Python — pitch control, pressing, physical |
+| Metrics | Custom Python — pitch control, pressing, physical, development scoring |
 | Backend | FastAPI + SQLAlchemy 2.0 |
 | Database | SQLite (dev) → PostgreSQL + pgvector (prod) |
 | Queue | Celery + Redis |
@@ -119,11 +119,11 @@ football-ai/
 ├── alembic/              Database migrations
 ├── detection/            YOLOv10 + SAM 2 + jersey OCR
 ├── tracking/             SORT tracker + re-ID
-├── metrics/              Pitch control, pressing, physical metrics
+├── metrics/              Pitch control, pressing, physical, development scoring
 ├── utils/                Homography (pixel ↔ pitch coords), visualisation
 ├── tasks/                Celery task (video processing pipeline)
 ├── scripts/              run_pipeline.py CLI + seed_dev.py
-└── tests/                134 passing tests (torch-free)
+└── tests/                89+ passing tests (torch-free)
 ```
 
 ---
@@ -165,12 +165,13 @@ Key variables:
 
 ## What's left to build
 
-| Priority | Item | Status |
-|---|---|---|
-| D | Replace HOG re-ID with OSNet/TransReID | Pending (needs torch) |
-| — | PostgreSQL + pgvector for production | Pending |
-| — | Rate limiting on auth endpoints | Pending |
-| — | Arabic UI (name_ar fields wired) | Pending |
+| Item | Status |
+|---|---|
+| Player performance prediction model | Next — data pipeline ready |
+| Heatmap data written by pipeline | Pending |
+| Replace HOG re-ID with OSNet/TransReID | Pending (needs torch) |
+| PostgreSQL + pgvector for production | Pending |
+| Arabic UI (name_ar fields already in schema) | Pending |
 
 ---
 
