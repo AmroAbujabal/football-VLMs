@@ -14,7 +14,7 @@ import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
-from database.models import Base, Academy, Match, Player, PlayerMatchStats
+from database.models import Base, Academy, Match, Player, PlayerMatchStats, DevelopmentScore
 from database.repository import PipelineResult, PressStatsLike, save_pipeline_results
 from metrics.physical import PhysicalMetrics
 
@@ -232,3 +232,113 @@ class TestSavePipelineResults:
         assert count == 0
         session.refresh(match)
         assert match.processing_status == "done"
+
+
+# ---------------------------------------------------------------------------
+# save_pipeline_results — DevelopmentScore upsert
+# ---------------------------------------------------------------------------
+
+class TestDevelopmentScoreUpsert:
+
+    def _run(self, session, match, track_id=1, distance=9000.0, sprint_count=15,
+             press_success_rate=0.5, pitch_control=0.075):
+        class _FakePress:
+            def __init__(self):
+                self.press_count = 10
+                self.press_success_rate = press_success_rate
+                self.trigger_accuracy = 0.6
+
+        result = PipelineResult(
+            match_id=match.id,
+            fps=25.0,
+            physical_metrics={track_id: PhysicalMetrics(
+                track_id=track_id,
+                top_speed_ms=7.0,
+                avg_speed_ms=4.0,
+                distance_covered_m=distance,
+                hi_run_count=20,
+                sprint_count=sprint_count,
+            )},
+            pitch_control_by_track={track_id: pitch_control},
+            press_stats={track_id: _FakePress()},
+            track_teams={track_id: "home"},
+        )
+        save_pipeline_results(session, match.academy_id, result)
+
+    def test_creates_development_score_after_save(self, session, match):
+        self._run(session, match)
+        scores = session.execute(select(DevelopmentScore)).scalars().all()
+        assert len(scores) == 1
+
+    def test_development_score_overall_is_between_zero_and_ten(self, session, match):
+        self._run(session, match)
+        score = session.execute(select(DevelopmentScore)).scalar_one()
+        assert 0.0 <= score.overall_score <= 10.0
+
+    def test_development_score_has_physical_tactical_technical(self, session, match):
+        self._run(session, match)
+        score = session.execute(select(DevelopmentScore)).scalar_one()
+        assert score.physical_score is not None
+        assert score.tactical_score is not None
+        assert score.technical_score is not None
+
+    def test_week_start_is_monday(self, session, match):
+        self._run(session, match)
+        score = session.execute(select(DevelopmentScore)).scalar_one()
+        assert score.week_start.weekday() == 0  # Monday = 0
+
+    def test_second_match_same_week_upserts_existing_score(self, session, match, academy):
+        """Two matches in the same week for the same player → one DevelopmentScore row."""
+        # First match
+        self._run(session, match, track_id=1)
+
+        # Second match same week
+        match2 = Match(
+            academy_id=academy.id,
+            home_team="X", away_team="Y",
+            processing_status="processing", fps=25.0,
+        )
+        session.add(match2)
+        session.flush()
+        self._run(session, match2, track_id=1)
+
+        # The player was created by track_id=1 in both → same player record
+        player = session.execute(select(Player)).scalar_one()
+        scores = session.execute(
+            select(DevelopmentScore).where(DevelopmentScore.player_id == player.id)
+        ).scalars().all()
+        assert len(scores) == 1
+
+    def test_matches_different_weeks_create_separate_scores(self, session, match, academy):
+        from datetime import timedelta
+
+        self._run(session, match, track_id=2)
+
+        match2 = Match(
+            academy_id=academy.id,
+            home_team="A", away_team="B",
+            processing_status="processing", fps=25.0,
+        )
+        session.add(match2)
+        session.flush()
+
+        # Force week_start to be next week by patching the function
+        from unittest.mock import patch
+        from datetime import datetime, timezone
+        next_monday = datetime.now(timezone.utc).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+        # add 7 days to land in a different week
+        next_monday = next_monday + timedelta(days=7)
+        next_monday = next_monday - timedelta(days=next_monday.weekday())
+
+        with patch("database.repository._week_start", return_value=next_monday):
+            self._run(session, match2, track_id=2)
+
+        player = session.execute(
+            select(Player).where(Player.name == "Track 2")
+        ).scalar_one()
+        scores = session.execute(
+            select(DevelopmentScore).where(DevelopmentScore.player_id == player.id)
+        ).scalars().all()
+        assert len(scores) == 2

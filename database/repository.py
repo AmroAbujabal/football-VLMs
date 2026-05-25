@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from sqlalchemy import select
@@ -20,8 +21,9 @@ from loguru import logger
 
 from typing import Protocol, runtime_checkable
 
-from database.models import Match, Player, PlayerMatchStats
+from database.models import Match, Player, PlayerMatchStats, DevelopmentScore
 from metrics.physical import PhysicalMetrics
+from metrics.development import compute_development_score
 
 
 # ---------------------------------------------------------------------------
@@ -91,6 +93,7 @@ def save_pipeline_results(
         raise ValueError(f"Match {result.match_id} not found in database")
 
     rows_created = 0
+    week = _week_start(match.match_date)
 
     for track_id, physical in result.physical_metrics.items():
         ocr_jersey = result.jersey_numbers.get(track_id)
@@ -117,6 +120,8 @@ def save_pipeline_results(
             pitch_control_contribution=pc,
         )
         session.add(stats)
+        session.flush()  # populate stats.id so upsert can reference it
+        _upsert_development_score(session, player.id, stats, week)
         rows_created += 1
 
     match.processing_status = "done"
@@ -131,6 +136,46 @@ def save_pipeline_results(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _week_start(dt: datetime | None = None) -> datetime:
+    """Return the Monday 00:00 UTC of the given (or current) datetime."""
+    base = (dt or datetime.now(timezone.utc)).replace(
+        hour=0, minute=0, second=0, microsecond=0, tzinfo=timezone.utc
+    )
+    return base - timedelta(days=base.weekday())
+
+
+def _upsert_development_score(
+    session: Session,
+    player_id: uuid.UUID,
+    stats: PlayerMatchStats,
+    week: datetime,
+) -> None:
+    """Create or update a DevelopmentScore for player_id in the given week."""
+    scores = compute_development_score(stats)
+
+    existing = session.execute(
+        select(DevelopmentScore).where(
+            DevelopmentScore.player_id == player_id,
+            DevelopmentScore.week_start == week,
+        )
+    ).scalar_one_or_none()
+
+    if existing:
+        existing.overall_score  = scores["overall_score"]
+        existing.physical_score = scores["physical_score"]
+        existing.tactical_score = scores["tactical_score"]
+        existing.technical_score = scores["technical_score"]
+    else:
+        session.add(DevelopmentScore(
+            player_id=player_id,
+            week_start=week,
+            overall_score=scores["overall_score"],
+            physical_score=scores["physical_score"],
+            tactical_score=scores["tactical_score"],
+            technical_score=scores["technical_score"],
+        ))
+
 
 def _get_or_create_player(
     session: Session,
